@@ -55,7 +55,7 @@ spec:
                           availableReplicas: .status.availableReplicas
                           labels: .metadata.labels
                           containers: .spec.template.spec.containers | map({name, image, resources})
-                          isHealthy: .status.availableReplicas == .spec.replicas
+                          isHealthy: if .status.availableReplicas == .spec.replicas then "Healthy" else "Unhealthy" end
                         relations:
                           Namespace: .metadata.namespace + "-" + env.CLUSTER_NAME
               - kind: apps/v1/daemonsets
@@ -78,7 +78,7 @@ spec:
                           availableReplicas: .status.numberAvailable
                           labels: .metadata.labels
                           containers: .spec.template.spec.containers | map({name, image, resources})
-                          isHealthy: .status.numberAvailable == .status.desiredNumberScheduled
+                          isHealthy: if .status.numberAvailable == .status.desiredNumberScheduled then "Healthy" else "Unhealthy" end
                         relations:
                           Namespace: .metadata.namespace + "-" + env.CLUSTER_NAME
               - kind: apps/v1/statefulsets
@@ -101,7 +101,7 @@ spec:
                           availableReplicas: .status.availableReplicas
                           labels: .metadata.labels
                           containers: .spec.template.spec.containers | map({name, image, resources})
-                          isHealthy: .status.availableReplicas == .spec.replicas
+                          isHealthy: if .status.availableReplicas == .spec.replicas then "Healthy" else "Unhealthy" end
                         relations:
                           Namespace: .metadata.namespace + "-" + env.CLUSTER_NAME
   destination:
