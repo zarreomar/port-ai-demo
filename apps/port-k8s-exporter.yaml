@@ -1,0 +1,115 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: port-k8s-exporter
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://port-labs.github.io/helm-charts
+    chart: port-k8s-exporter
+    targetRevision: 0.3.22
+    helm:
+      values: |
+        secret:
+          useExistingSecret: true
+          name: port-credentials
+        overwriteConfigurationOnRestart: true
+        stateKey: kind-dot
+        extraEnv:
+          - name: CLUSTER_NAME
+            value: kind-dot
+        configMap:
+          config:
+            resources:
+              - kind: v1/namespaces
+                selector:
+                  query: .metadata.name | startswith("kube") | not
+                port:
+                  entity:
+                    mappings:
+                      - identifier: .metadata.name + "-" + env.CLUSTER_NAME
+                        title: .metadata.name
+                        blueprint: '"namespace"'
+                        properties:
+                          creationTimestamp: .metadata.creationTimestamp
+                        relations:
+                          Cluster: env.CLUSTER_NAME
+              - kind: apps/v1/deployments
+                selector:
+                  query: .metadata.namespace | startswith("kube") | not
+                port:
+                  entity:
+                    mappings:
+                      - identifier: .metadata.name + "-Deployment-" + .metadata.namespace + "-" + env.CLUSTER_NAME
+                        title: .metadata.name
+                        blueprint: '"workload"'
+                        properties:
+                          kind: '"Deployment"'
+                          creationTimestamp: .metadata.creationTimestamp
+                          replicas: .spec.replicas
+                          hasPrivileged: .spec.template.spec.containers | map(.securityContext.privileged // false) | any
+                          hasLatest: .spec.template.spec.containers[].image | endswith(":latest")
+                          hasLimits: .spec.template.spec.containers | all(.resources.limits != null)
+                          strategyConfig: .spec.strategy // {}
+                          availableReplicas: .status.availableReplicas
+                          labels: .metadata.labels
+                          containers: .spec.template.spec.containers | map({name, image, resources})
+                          isHealthy: .status.availableReplicas == .spec.replicas
+                        relations:
+                          Namespace: .metadata.namespace + "-" + env.CLUSTER_NAME
+              - kind: apps/v1/daemonsets
+                selector:
+                  query: .metadata.namespace | startswith("kube") | not
+                port:
+                  entity:
+                    mappings:
+                      - identifier: .metadata.name + "-DaemonSet-" + .metadata.namespace + "-" + env.CLUSTER_NAME
+                        title: .metadata.name
+                        blueprint: '"workload"'
+                        properties:
+                          kind: '"DaemonSet"'
+                          creationTimestamp: .metadata.creationTimestamp
+                          replicas: .status.desiredNumberScheduled
+                          hasPrivileged: .spec.template.spec.containers | map(.securityContext.privileged // false) | any
+                          hasLatest: .spec.template.spec.containers[].image | endswith(":latest")
+                          hasLimits: .spec.template.spec.containers | all(.resources.limits != null)
+                          strategyConfig: .spec.updateStrategy // {}
+                          availableReplicas: .status.numberAvailable
+                          labels: .metadata.labels
+                          containers: .spec.template.spec.containers | map({name, image, resources})
+                          isHealthy: .status.numberAvailable == .status.desiredNumberScheduled
+                        relations:
+                          Namespace: .metadata.namespace + "-" + env.CLUSTER_NAME
+              - kind: apps/v1/statefulsets
+                selector:
+                  query: .metadata.namespace | startswith("kube") | not
+                port:
+                  entity:
+                    mappings:
+                      - identifier: .metadata.name + "-StatefulSet-" + .metadata.namespace + "-" + env.CLUSTER_NAME
+                        title: .metadata.name
+                        blueprint: '"workload"'
+                        properties:
+                          kind: '"StatefulSet"'
+                          creationTimestamp: .metadata.creationTimestamp
+                          replicas: .spec.replicas
+                          hasPrivileged: .spec.template.spec.containers | map(.securityContext.privileged // false) | any
+                          hasLatest: .spec.template.spec.containers[].image | endswith(":latest")
+                          hasLimits: .spec.template.spec.containers | all(.resources.limits != null)
+                          strategyConfig: .spec.updateStrategy // {}
+                          availableReplicas: .status.availableReplicas
+                          labels: .metadata.labels
+                          containers: .spec.template.spec.containers | map({name, image, resources})
+                          isHealthy: .status.availableReplicas == .spec.replicas
+                        relations:
+                          Namespace: .metadata.namespace + "-" + env.CLUSTER_NAME
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: port-k8s-exporter
+  syncPolicy:
+    automated:
+      selfHeal: true
+      prune: true
+    syncOptions:
+      - CreateNamespace=true
