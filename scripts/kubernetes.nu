@@ -54,6 +54,9 @@ def --env "main create kubernetes" [
             kind: "Cluster"
             apiVersion: "kind.x-k8s.io/v1alpha4"
             name: $name
+            networking: {
+                ipFamily: "ipv4"
+            }
             nodes: [{
                 role: "control-plane"
             }]
@@ -84,7 +87,9 @@ nodeRegistration:
         $config | to yaml | save $"kind.yaml" --force
 
         kind create cluster --config kind.yaml
-    
+
+        main configure kubernetes dns
+
     } else {
 
         print $"(ansi red_bold)($provider)(ansi reset) is not a supported."
@@ -92,7 +97,96 @@ nodeRegistration:
 
     }
 
+    main allow kubernetes egress --namespaces ["default" "kube-system" "crossplane-system"]
+
     $env.KUBECONFIG
+
+}
+
+def "main configure kubernetes dns" [
+    --upstreams = ["8.8.8.8" "8.8.4.4"]
+    --xpkg-ips = ["3.67.33.93" "3.77.103.135"]
+] {
+
+    let coredns = (
+        kubectl --namespace kube-system
+            get configmap coredns --output json
+            | from json
+    )
+    let current_corefile = ($coredns | get data.Corefile)
+    let upstreams_text = ($upstreams | str join " ")
+    let hosts_block = $"
+        hosts {
+          ($xpkg_ips | get 0) xpkg.crossplane.io gateway.scarf.sh
+          ($xpkg_ips | get 1) xpkg.crossplane.io gateway.scarf.sh
+          fallthrough
+        }
+"
+
+    mut updated_corefile = $current_corefile
+    $updated_corefile = (
+        $updated_corefile
+            | str replace "forward . /etc/resolv.conf" $"forward . ($upstreams_text)"
+    )
+
+    if not ($updated_corefile | str contains "xpkg.crossplane.io") {
+        $updated_corefile = (
+            $updated_corefile
+                | str replace "prometheus :9153" $"prometheus :9153($hosts_block)"
+        )
+    }
+
+    if $updated_corefile == $current_corefile {
+        return
+    }
+
+    {
+        apiVersion: "v1"
+        kind: "ConfigMap"
+        metadata: {
+            name: "coredns"
+            namespace: "kube-system"
+        }
+        data: {
+            Corefile: $updated_corefile
+        }
+    } | to yaml | kubectl apply --filename -
+
+    (
+        kubectl --namespace kube-system
+            rollout restart deployment coredns
+    )
+
+    (
+        kubectl --namespace kube-system
+            rollout status deployment coredns --timeout 2m
+    )
+
+}
+
+def "main allow kubernetes egress" [
+    --namespaces = ["default" "kube-system" "crossplane-system"]
+] {
+
+    for namespace in $namespaces {
+        do --ignore-errors {
+            kubectl create namespace $namespace
+        }
+
+        {
+            apiVersion: "networking.k8s.io/v1"
+            kind: "NetworkPolicy"
+            metadata: {
+                name: "allow-all-egress"
+                namespace: $namespace
+            }
+            spec: {
+                podSelector: {}
+                policyTypes: ["Egress"]
+                egress: [{}]
+            }
+        } | to yaml | kubectl apply --filename -
+    }
 
 }
 

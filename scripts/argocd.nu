@@ -17,11 +17,20 @@ def "main apply argocd" [
 
     let git_url = git config --get remote.origin.url
 
-    let hashed_password = (
-        htpasswd -nbBC 10 "" $admin_password
-            | tr -d ':\n'
-            | sed 's/$2y/$2a/'
-    )
+    let has_htpasswd = ((do --ignore-errors { which htpasswd }) | is-not-empty)
+    mut hashed_password = if $has_htpasswd {
+        (
+            htpasswd -nbBC 10 "" $admin_password
+                | tr -d ':\n'
+                | sed 's/$2y/$2a/'
+        )
+    } else {
+        ""
+    }
+
+    if ($hashed_password | is-empty) {
+        print $"(ansi yellow_bold)Could not generate a bcrypt admin password hash because `htpasswd` is unavailable. Argo CD will use its initial admin secret.(ansi reset)"
+    }
 
     {
         configs: {
@@ -55,12 +64,20 @@ def "main apply argocd" [
 
     helm repo update
 
-    (
-        helm upgrade --install argocd argo/argo-cd
-            --namespace argocd --create-namespace
-            --values argocd-values.yaml --wait
-            --set $"configs.secret.argocdServerAdminPassword=($hashed_password)"
-    )
+    if ($hashed_password | is-empty) {
+        (
+            helm upgrade --install argocd argo/argo-cd
+                --namespace argocd --create-namespace
+                --values argocd-values.yaml --wait
+        )
+    } else {
+        (
+            helm upgrade --install argocd argo/argo-cd
+                --namespace argocd --create-namespace
+                --values argocd-values.yaml --wait
+                --set $"configs.secret.argocdServerAdminPassword=($hashed_password)"
+        )
+    }
 
     mkdir argocd
 

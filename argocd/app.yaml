@@ -6,12 +6,12 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://github.com/vfarcic/port-ai-demo.git
+    repoURL: git@github.com:zarreomar/port-ai-demo.git
     targetRevision: HEAD
     path: apps
   destination:
     server: https://kubernetes.default.svc
-    namespace: a-team
+    namespace: argocd
   syncPolicy:
     automated:
       selfHeal: true

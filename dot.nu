@@ -9,7 +9,14 @@ def main [] {}
 
 def "main setup" [] {
 
-    rm --force .env
+    if (".env" | path exists) {
+        open .env
+            | lines
+            | where { |line| (not ($line | str starts-with "export KUBECONFIG=")) and (not ($line | str starts-with "export KUBECONFIG_DOT=")) }
+            | str join "\n"
+            | $"($in)\n"
+            | save .env --force
+    }
 
     main create kubernetes kind
 
