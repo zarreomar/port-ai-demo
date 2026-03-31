@@ -1,0 +1,110 @@
+name: Manage SQL Database
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Action to perform'
+        required: true
+        type: choice
+        options: [create, update, delete]
+      name:
+        description: 'Database name'
+        required: true
+      namespace:
+        description: 'Namespace'
+        required: true
+        default: a-team
+      version:
+        description: 'PostgreSQL version'
+        required: false
+        default: '13'
+      size:
+        description: 'Size (small/medium/large)'
+        required: false
+        default: small
+      region:
+        description: 'Region'
+        required: false
+        default: us-east-1
+      provider:
+        description: 'Cloud provider (google/aws/azure)'
+        required: false
+        default: google
+      port_run_id:
+        description: 'Port run ID'
+        required: true
+
+jobs:
+  manage-sql:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Report RUNNING
+        uses: port-labs/port-github-action@v1
+        with:
+          clientId: ${{ secrets.PORT_CLIENT_ID }}
+          clientSecret: ${{ secrets.PORT_CLIENT_SECRET }}
+          baseUrl: https://api.getport.io
+          operation: PATCH_RUN
+          runId: ${{ inputs.port_run_id }}
+          status: RUNNING
+          logMessage: "Starting ${{ inputs.action }} for SQL database ${{ inputs.name }}"
+
+      - name: Create or update manifest
+        if: ${{ inputs.action != 'delete' }}
+        run: |
+          cat > apps/${{ inputs.name }}-db.yaml << 'MANIFEST'
+          ---
+          apiVersion: devopstoolkit.live/v1beta1
+          kind: SQL
+          metadata:
+            name: ${{ inputs.name }}
+            namespace: ${{ inputs.namespace }}
+          spec:
+            version: "${{ inputs.version }}"
+            size: ${{ inputs.size }}
+            region: ${{ inputs.region }}
+            crossplane:
+              compositionSelector:
+                matchLabels:
+                  provider: ${{ inputs.provider }}
+                  db: postgresql
+          MANIFEST
+
+      - name: Delete manifest
+        if: ${{ inputs.action == 'delete' }}
+        run: rm -f apps/${{ inputs.name }}-db.yaml
+
+      - name: Commit and push
+        run: |
+          git config user.name "Port Bot"
+          git config user.email "port-bot@users.noreply.github.com"
+          git add apps/
+          git diff --staged --quiet || git commit -m "${{ inputs.action }}: SQL database ${{ inputs.name }}"
+          git push
+
+      - name: Report SUCCESS
+        if: success()
+        uses: port-labs/port-github-action@v1
+        with:
+          clientId: ${{ secrets.PORT_CLIENT_ID }}
+          clientSecret: ${{ secrets.PORT_CLIENT_SECRET }}
+          baseUrl: https://api.getport.io
+          operation: PATCH_RUN
+          runId: ${{ inputs.port_run_id }}
+          status: SUCCESS
+          logMessage: "SQL database ${{ inputs.name }} ${{ inputs.action }}d successfully"
+
+      - name: Report FAILURE
+        if: failure()
+        uses: port-labs/port-github-action@v1
+        with:
+          clientId: ${{ secrets.PORT_CLIENT_ID }}
+          clientSecret: ${{ secrets.PORT_CLIENT_SECRET }}
+          baseUrl: https://api.getport.io
+          operation: PATCH_RUN
+          runId: ${{ inputs.port_run_id }}
+          status: FAILURE
+          logMessage: "Failed to ${{ inputs.action }} SQL database ${{ inputs.name }}"

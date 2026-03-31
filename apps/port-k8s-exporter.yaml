@@ -104,6 +104,45 @@ spec:
                           isHealthy: if .status.availableReplicas == .spec.replicas then "Healthy" else "Unhealthy" end
                         relations:
                           Namespace: .metadata.namespace + "-" + env.CLUSTER_NAME
+              - kind: devopstoolkit.live/v1beta1/sqls
+                selector:
+                  query: "true"
+                port:
+                  entity:
+                    mappings:
+                      - identifier: .metadata.name + "-SQL-" + .metadata.namespace + "-" + env.CLUSTER_NAME
+                        title: .metadata.name
+                        blueprint: '"crossplaneSql"'
+                        properties:
+                          version: .spec.version
+                          size: .spec.size
+                          region: .spec.region
+                          provider: .spec.crossplane.compositionSelector.matchLabels.provider
+                          synced: .status.conditions // [] | map(select(.type == "Synced")) | first | .status == "True"
+                          ready: .status.conditions // [] | map(select(.type == "Ready")) | first | .status == "True"
+                          creationTimestamp: .metadata.creationTimestamp
+                        relations:
+                          namespace: .metadata.namespace + "-" + env.CLUSTER_NAME
+              - kind: devopstoolkit.live/v1beta1/apps
+                selector:
+                  query: "true"
+                port:
+                  entity:
+                    mappings:
+                      - identifier: .metadata.name + "-App-" + .metadata.namespace + "-" + env.CLUSTER_NAME
+                        title: .metadata.name
+                        blueprint: '"crossplaneApp"'
+                        properties:
+                          image: .spec.image
+                          tag: .spec.tag
+                          port: .spec.port
+                          host: .spec.host
+                          scalingEnabled: .spec.scaling.enabled
+                          scalingMin: .spec.scaling.min
+                          scalingMax: .spec.scaling.max
+                          creationTimestamp: .metadata.creationTimestamp
+                        relations:
+                          namespace: .metadata.namespace + "-" + env.CLUSTER_NAME
   destination:
     server: https://kubernetes.default.svc
     namespace: port-k8s-exporter

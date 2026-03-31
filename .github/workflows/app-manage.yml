@@ -1,0 +1,121 @@
+name: Manage Crossplane App
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Action to perform'
+        required: true
+        type: choice
+        options: [create, update, delete]
+      name:
+        description: 'Application name'
+        required: true
+      namespace:
+        description: 'Namespace'
+        required: true
+        default: a-team
+      image:
+        description: 'Container image (e.g. ghcr.io/org/app)'
+        required: false
+      tag:
+        description: 'Image tag'
+        required: false
+        default: latest
+      port:
+        description: 'Container port'
+        required: false
+        default: '8080'
+      host:
+        description: 'Hostname'
+        required: false
+      scaling_min:
+        description: 'Min replicas'
+        required: false
+        default: '1'
+      scaling_max:
+        description: 'Max replicas'
+        required: false
+        default: '3'
+      port_run_id:
+        description: 'Port run ID'
+        required: true
+
+jobs:
+  manage-app:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Report RUNNING
+        uses: port-labs/port-github-action@v1
+        with:
+          clientId: ${{ secrets.PORT_CLIENT_ID }}
+          clientSecret: ${{ secrets.PORT_CLIENT_SECRET }}
+          baseUrl: https://api.getport.io
+          operation: PATCH_RUN
+          runId: ${{ inputs.port_run_id }}
+          status: RUNNING
+          logMessage: "Starting ${{ inputs.action }} for app ${{ inputs.name }}"
+
+      - name: Create or update manifest
+        if: ${{ inputs.action != 'delete' }}
+        run: |
+          cat > apps/${{ inputs.name }}-app.yaml << 'MANIFEST'
+          ---
+          apiVersion: devopstoolkit.live/v1beta1
+          kind: App
+          metadata:
+            name: ${{ inputs.name }}
+            namespace: ${{ inputs.namespace }}
+          spec:
+            image: ${{ inputs.image }}
+            tag: "${{ inputs.tag }}"
+            port: ${{ inputs.port }}
+            host: ${{ inputs.host }}
+            scaling:
+              enabled: true
+              min: ${{ inputs.scaling_min }}
+              max: ${{ inputs.scaling_max }}
+            crossplane:
+              compositionSelector:
+                matchLabels:
+                  type: backend
+                  location: local
+          MANIFEST
+
+      - name: Delete manifest
+        if: ${{ inputs.action == 'delete' }}
+        run: rm -f apps/${{ inputs.name }}-app.yaml
+
+      - name: Commit and push
+        run: |
+          git config user.name "Port Bot"
+          git config user.email "port-bot@users.noreply.github.com"
+          git add apps/
+          git diff --staged --quiet || git commit -m "${{ inputs.action }}: App ${{ inputs.name }}"
+          git push
+
+      - name: Report SUCCESS
+        if: success()
+        uses: port-labs/port-github-action@v1
+        with:
+          clientId: ${{ secrets.PORT_CLIENT_ID }}
+          clientSecret: ${{ secrets.PORT_CLIENT_SECRET }}
+          baseUrl: https://api.getport.io
+          operation: PATCH_RUN
+          runId: ${{ inputs.port_run_id }}
+          status: SUCCESS
+          logMessage: "App ${{ inputs.name }} ${{ inputs.action }}d successfully"
+
+      - name: Report FAILURE
+        if: failure()
+        uses: port-labs/port-github-action@v1
+        with:
+          clientId: ${{ secrets.PORT_CLIENT_ID }}
+          clientSecret: ${{ secrets.PORT_CLIENT_SECRET }}
+          baseUrl: https://api.getport.io
+          operation: PATCH_RUN
+          runId: ${{ inputs.port_run_id }}
+          status: FAILURE
+          logMessage: "Failed to ${{ inputs.action }} app ${{ inputs.name }}"
