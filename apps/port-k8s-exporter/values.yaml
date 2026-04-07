@@ -1,0 +1,128 @@
+secret:
+  useExistingSecret: true
+  name: port-credentials
+
+overwriteConfigurationOnRestart: true
+
+stateKey: port-k8s-exporter
+
+extraEnv:
+  - name: CLUSTER_NAME
+    value: "k3s-default"
+
+configMap:
+  config:
+    - kind: Cluster
+      selector:
+        query: "true"
+      port:
+        entity:
+          mappings:
+            - identifier: .metadata.name + "-" + env.CLUSTER_NAME
+              blueprint: '"cluster"'
+              properties:
+                name: .metadata.name
+                displayName: .metadata.name
+    - kind: Namespace
+      selector:
+        query: "true"
+      port:
+        entity:
+          mappings:
+            - identifier: .metadata.name + "-" + env.CLUSTER_NAME
+              blueprint: '"namespace"'
+              properties:
+                name: .metadata.name
+    - kind: Deployment
+      selector:
+        query: "true"
+      port:
+        entity:
+          mappings:
+            - identifier: .metadata.name + "-" + .metadata.namespace + "-" + env.CLUSTER_NAME
+              blueprint: '"workload"'
+              properties:
+                name: .metadata.name
+              relations:
+                - key: namespace
+                  value: .metadata.namespace + "-" + env.CLUSTER_NAME
+    - kind: DaemonSet
+      selector:
+        query: "true"
+      port:
+        entity:
+          mappings:
+            - identifier: .metadata.name + "-" + .metadata.namespace + "-" + env.CLUSTER_NAME
+              blueprint: '"workload"'
+              properties:
+                name: .metadata.name
+              relations:
+                - key: namespace
+                  value: .metadata.namespace + "-" + env.CLUSTER_NAME
+    - kind: StatefulSet
+      selector:
+        query: "true"
+      port:
+        entity:
+          mappings:
+            - identifier: .metadata.name + "-" + .metadata.namespace + "-" + env.CLUSTER_NAME
+              blueprint: '"workload"'
+              properties:
+                name: .metadata.name
+              relations:
+                - key: namespace
+                  value: .metadata.namespace + "-" + env.CLUSTER_NAME
+    - kind: Service
+      selector:
+        query: "true"
+      port:
+        entity:
+          mappings:
+            - identifier: .metadata.name + "-" + .metadata.namespace + "-" + env.CLUSTER_NAME
+              blueprint: '"service"'
+              properties:
+                name: .metadata.name
+                type: .spec.type
+              relations:
+                - key: namespace
+                  value: .metadata.namespace + "-" + env.CLUSTER_NAME
+    - kind: Ingress
+      selector:
+        query: "true"
+      port:
+        entity:
+          mappings:
+            - identifier: .metadata.name + "-" + .metadata.namespace + "-" + env.CLUSTER_NAME
+              blueprint: '"ingress"'
+              properties:
+                name: .metadata.name
+              relations:
+                - key: namespace
+                  value: .metadata.namespace + "-" + env.CLUSTER_NAME
+    - kind: ConfigMap
+      selector:
+        query: "true"
+      port:
+        entity:
+          mappings:
+            - identifier: .metadata.name + "-" + .metadata.namespace + "-" + env.CLUSTER_NAME
+              blueprint: '"configmap"'
+              properties:
+                name: .metadata.name
+              relations:
+                - key: namespace
+                  value: .metadata.namespace + "-" + env.CLUSTER_NAME
+    - kind: Pod
+      selector:
+        query: ".metadata.ownerReferences[0].kind == \"Job\""
+      port:
+        entity:
+          mappings:
+            - identifier: .metadata.name + "-" + .metadata.namespace + "-" + env.CLUSTER_NAME
+              blueprint: '"pod"'
+              properties:
+                name: .metadata.name
+                status: .status.phase
+              relations:
+                - key: namespace
+                  value: .metadata.namespace + "-" + env.CLUSTER_NAME

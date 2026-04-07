@@ -1,0 +1,23 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: port-k8s-exporter
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/zarreomar/port-ai-demo.git
+    targetRevision: HEAD
+    path: apps/port-k8s-exporter
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: port-k8s-exporter
+  syncPolicy:
+    syncOptions:
+      - CreateNamespace=true
+      - SkipDryRunOnMissingResource=true
+    automated:
+      selfHeal: true
+      prune: true
